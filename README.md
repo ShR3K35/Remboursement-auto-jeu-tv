@@ -66,8 +66,8 @@ webhook Stripe `https://<votre-serveur>/webhooks/stripe` (événements
 
 ### 2. Application Android
 
-- Téléchargez l'APK produit par GitHub Actions (onglet *Actions* > dernier build > artefact
-  `remboursement-jeux-tv-apk`), ou compilez : `./gradlew :app:assembleRelease`.
+- Téléchargez l'APK : https://github.com/ShR3K35/Remboursement-auto-jeu-tv/releases/latest/download/remboursement-jeux-tv.apk
+  (ou compilez : `./gradlew :app:assembleRelease`).
 - Installez-le (autorisez l'installation depuis cette source).
 - Android 13+ : si la permission SMS est grisée, ouvrez *Paramètres > Applications >
   Remboursement Jeux TV > ⋮ > Autoriser les paramètres restreints*.
