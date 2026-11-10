@@ -49,6 +49,8 @@ data class ClaimState(
     val error: String? = null,
     val submittedAtMillis: Long? = null,
     val lastReminderMillis: Long = 0,
+    /** Mode d'envoi utilisé (voir SendMethod). */
+    val method: String? = null,
 )
 
 /** Pièce justificative stockée (fichier chiffré + type MIME). */
@@ -159,6 +161,7 @@ object Repository {
                     put("error", c.error ?: JSONObject.NULL)
                     put("submittedAt", c.submittedAtMillis ?: JSONObject.NULL)
                     put("lastReminder", c.lastReminderMillis)
+                    put("method", c.method ?: JSONObject.NULL)
                 })
             }
         })
@@ -233,6 +236,7 @@ object Repository {
                 error = c.optStringOrNull("error"),
                 submittedAtMillis = c.optLongOrNull("submittedAt"),
                 lastReminderMillis = c.optLong("lastReminder"),
+                method = c.optStringOrNull("method"),
             )
         }
         return AppData(

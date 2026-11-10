@@ -66,7 +66,7 @@ object ClaimSender {
             last = s
             when (s.status) {
                 "submitted" -> {
-                    markSubmitted(claim, s)
+                    markSent(claim, s.letterId, SendMethod.MAILEVA, ClaimStatus.SUBMITTED, s.amountCents, s.mailevaSendingId)
                     return s
                 }
                 "submission_failed", "payment_failed" -> {
@@ -81,22 +81,30 @@ object ClaimSender {
     }
 
     /** Archive la demande envoyée et marque ses participations comme réclamées. */
-    private suspend fun markSubmitted(claim: ClaimDraft, s: LetterStatus) {
+    suspend fun markSent(
+        claim: ClaimDraft,
+        letterId: String,
+        method: SendMethod,
+        status: ClaimStatus,
+        amountPaidCents: Int? = null,
+        sendingId: String? = null,
+    ) {
         val ids = claim.participations.map { it.smsId to it.timestampMillis }.toSet()
         Repository.update { d ->
             val history = (d.claims[claim.key] ?: ClaimState()).copy(
-                status = ClaimStatus.SUBMITTED,
-                letterId = s.letterId,
-                amountPaidCents = s.amountCents,
-                mailevaSendingId = s.mailevaSendingId,
+                status = status,
+                letterId = letterId,
+                amountPaidCents = amountPaidCents,
+                mailevaSendingId = sendingId,
                 submittedAtMillis = System.currentTimeMillis(),
                 error = null,
+                method = method.name,
             )
             d.copy(
                 participations = d.participations.map {
-                    if ((it.smsId to it.timestampMillis) in ids) it.copy(claimedLetterId = s.letterId) else it
+                    if ((it.smsId to it.timestampMillis) in ids) it.copy(claimedLetterId = letterId) else it
                 },
-                claims = (d.claims - claim.key) + ("${claim.key}|${s.letterId}" to history),
+                claims = (d.claims - claim.key) + ("${claim.key}|$letterId" to history),
             )
         }
     }

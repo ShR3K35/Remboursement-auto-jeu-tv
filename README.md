@@ -29,9 +29,18 @@ calcule le prix, crée le paiement, vérifie qu'il a abouti puis transmet le cou
 3. **Pièces** : bouton « Depuis Prixtel » : l'espace client Prixtel s'ouvre dans l'app, vous
    vous connectez vous-même (l'app ne voit pas votre mot de passe), et la facture PDF téléchargée
    est rattachée au mois voulu. Ou « Choisir un fichier ». Le RIB s'ajoute dans Réglages.
-4. **Envoi** : « Aperçu PDF » pour relire, puis « Envoyer par La Poste » : le serveur annonce le
-   prix, vous payez par carte dans la PaymentSheet Stripe (3-D Secure), et le courrier part
-   seulement quand le serveur a vérifié le paiement auprès de Stripe.
+4. **Envoi** : « Aperçu PDF » pour relire, puis choix du mode d'envoi :
+
+   | Mode | Comment | Coût |
+   |---|---|---|
+   | **Imprimer et poster moi-même** (par défaut) | Impression directe (service d'impression Android) ou partage du PDF ; liens vers *Mon Timbre en Ligne* (timbre à imprimer) et l'appli La Poste (timbre en code à recopier) ; dépôt en boîte jaune ; bouton « J'ai posté » | Timbre Lettre verte, **remboursé par la chaîne** |
+   | **Lettre en ligne (laposte.fr)** | L'app enregistre le PDF complet et ouvre le site ; vous l'importez et payez chez La Poste | Surcoût non remboursé |
+   | **Merci Facteur (site)** | Idem sur merci-facteur.com | Surcoût non remboursé |
+   | **Automatique (Maileva)** | Paiement par carte dans l'app (Stripe, 3-D Secure) puis envoi via l'API Maileva, sans autre action | Surcoût non remboursé, serveur requis |
+
+   Les sites La Poste et Merci Facteur n'offrent pas d'API publique pour les particuliers :
+   l'app prépare tout et vous terminez sur leur site (paiement sécurisé chez eux).
+   Seul le mode Maileva nécessite le serveur décrit ci-dessous.
 
 ## Sécurité
 
@@ -49,7 +58,7 @@ calcule le prix, crée le paiement, vérifie qu'il a abouti puis transmet le cou
 
 ## Installation
 
-### 1. Serveur
+### 1. Serveur (uniquement pour le mode automatique Maileva)
 
 Prérequis : un compte Stripe et un compte API Maileva (sandbox gratuite pour tester).
 

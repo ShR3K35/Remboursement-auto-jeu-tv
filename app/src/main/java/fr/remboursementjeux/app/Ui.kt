@@ -274,7 +274,7 @@ private fun EditParticipationDialog(p: Participation, onDismiss: () -> Unit) {
 @Composable
 private fun ClaimsScreen(data: AppData, onOpen: (String) -> Unit) {
     val drafts = Repository.claims(data)
-    val history = data.claims.filter { it.value.status == ClaimStatus.SUBMITTED }.entries.sortedByDescending { it.value.submittedAtMillis }
+    val history = data.claims.filter { it.value.status == ClaimStatus.SUBMITTED || it.value.status == ClaimStatus.POSTED }.entries.sortedByDescending { it.value.submittedAtMillis }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
@@ -303,7 +303,8 @@ private fun ClaimsScreen(data: AppData, onOpen: (String) -> Unit) {
             Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))) {
                 Column(Modifier.padding(12.dp)) {
                     Text(key.split('|').let { "${it[0]} – ${it.getOrElse(1) { "" }}" }, fontWeight = FontWeight.Bold)
-                    st.submittedAtMillis?.let { Text("Transmis à La Poste le ${dateLong.format(Date(it))}") }
+                    val how = st.method?.let { m -> runCatching { SendMethod.valueOf(m).label }.getOrNull() }
+                    st.submittedAtMillis?.let { Text("${st.status.label} le ${dateLong.format(Date(it))}" + (how?.let { h -> " · $h" } ?: "")) }
                     st.amountPaidCents?.let { Text("Frais d'envoi payés : ${Money.format(it)}") }
                     st.mailevaSendingId?.let { Text("Réf. envoi : $it", style = MaterialTheme.typography.bodySmall) }
                 }
@@ -326,6 +327,7 @@ private fun ClaimDetailScreen(data: AppData, key: String, onBack: () -> Unit, on
     var pending by remember { mutableStateOf<CreatedLetter?>(null) }
     var askPay by remember { mutableStateOf(false) }
     var pickMonth by remember { mutableStateOf<String?>(null) }
+    var method by remember { mutableStateOf(SendMethod.PRINT) }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         val month = pickMonth ?: return@rememberLauncherForActivityResult
@@ -442,9 +444,22 @@ private fun ClaimDetailScreen(data: AppData, key: String, onBack: () -> Unit, on
                         }
                     },
                 ) { Text("Aperçu PDF") }
+            }
 
+            HorizontalDivider()
+            Text("Mode d'envoi", style = MaterialTheme.typography.titleSmall)
+            SendMethod.entries.forEach { m ->
+                FilterChip(selected = method == m, onClick = { method = m }, label = { Text(m.label) })
+            }
+
+            if (method != SendMethod.MAILEVA) {
+                ManualSendPanel(data, claim, method, ready = missing.isEmpty(), onSent = onBack)
+            } else {
+                Text(SendMethod.MAILEVA.summary, style = MaterialTheme.typography.bodySmall)
+                val serverReady = data.settings.serverUrl.startsWith("https://") && data.settings.apiToken.length >= 32
+                if (!serverReady) Text("Configurez l'adresse du serveur et le jeton dans Réglages.", color = MaterialTheme.colorScheme.error)
                 Button(
-                    enabled = busy == null && missing.isEmpty(),
+                    enabled = busy == null && missing.isEmpty() && serverReady,
                     onClick = {
                         error = null
                         val already = pending
@@ -477,7 +492,7 @@ private fun ClaimDetailScreen(data: AppData, key: String, onBack: () -> Unit, on
                             busy = null
                         }
                     },
-                ) { Text(if (pending != null) "Reprendre le paiement" else "Envoyer par La Poste") }
+                ) { Text(if (pending != null) "Reprendre le paiement" else "Payer et envoyer automatiquement") }
             }
 
             val failedLetterId = state.letterId

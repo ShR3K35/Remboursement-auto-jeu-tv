@@ -55,6 +55,7 @@ enum class ClaimStatus(val label: String) {
     AWAITING_PAYMENT("Paiement en attente"),
     PAID("Payée, envoi en cours"),
     SUBMITTED("Courrier transmis à La Poste"),
+    POSTED("Courrier posté"),
     FAILED("Échec"),
 }
 
