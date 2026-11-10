@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.provider.Telephony
 import androidx.core.content.ContextCompat
 import fr.remboursementjeux.core.ClaimBuilder
+import fr.remboursementjeux.core.Dedup
 import fr.remboursementjeux.core.Participation
 import fr.remboursementjeux.core.SentSms
 import fr.remboursementjeux.core.SmsDetector
@@ -21,7 +22,10 @@ object SmsScanner {
     /** Au premier lancement, on remonte sur 120 jours (au-delà du délai de 90 jours des règlements). */
     private const val FIRST_SCAN_DAYS = 120L
 
-    fun hasPermission(context: Context) =
+    /** false dans la version « facture » (pas de permission SMS). */
+    val enabled: Boolean get() = BuildConfig.SMS_DETECTION
+
+    fun hasPermission(context: Context) = enabled &&
         ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED
 
     /** @return les nouvelles participations détectées. */
@@ -54,9 +58,10 @@ object SmsScanner {
         val detected = detector.detectAll(messages)
         var added = emptyList<Participation>()
         Repository.update { d ->
-            val known = d.participations.map { it.smsId to it.timestampMillis }.toSet()
-            added = detected.filter { (it.smsId to it.timestampMillis) !in known }
-            d.copy(participations = d.participations + added, lastScanMillis = now)
+            // Fusion anti-doublon : un SMS déjà connu, ou déjà présent via la facture, n'est pas ajouté.
+            val merged = Dedup.merge(d.participations, detected)
+            added = merged.added
+            d.copy(participations = merged.participations, lastScanMillis = now)
         }
         added
     }

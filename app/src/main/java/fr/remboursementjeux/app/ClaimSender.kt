@@ -3,6 +3,7 @@ package fr.remboursementjeux.app
 import android.content.Context
 import fr.remboursementjeux.core.ClaimDraft
 import fr.remboursementjeux.core.ClaimStatus
+import fr.remboursementjeux.core.Dedup
 import fr.remboursementjeux.core.LetterContent
 import fr.remboursementjeux.core.RequiredDocument
 import kotlinx.coroutines.Dispatchers
@@ -26,8 +27,32 @@ object ClaimSender {
         if (!claim.isSendable) add("Aucune participation dans le délai")
     }
 
+    /**
+     * Contrôle anti-doublon juste avant de produire le courrier : chaque SMS de la
+     * demande doit être unique, toujours présent et non réclamé par une autre lettre.
+     */
+    fun ensureNotAlreadyClaimed(claim: ClaimDraft) {
+        val current = Repository.data.value.participations
+        val distinct = Dedup.distinct(claim.participations)
+        require(distinct.size == claim.participations.size) { "Doublon détecté dans la demande : rechargez l'écran." }
+        for (p in claim.participations) {
+            val now = current.firstOrNull { it.smsId == p.smsId && it.timestampMillis == p.timestampMillis }
+                ?: throw IllegalStateException("Une participation a changé : rechargez l'écran.")
+            check(now.claimedLetterId == null) {
+                "Le SMS du ${java.text.DateFormat.getDateTimeInstance().format(java.util.Date(p.timestampMillis))} " +
+                    "a déjà fait l'objet d'une demande : envoi bloqué pour éviter un doublon."
+            }
+            if (now.invoiceRef != null) {
+                check(current.none { it !== now && it.invoiceRef == now.invoiceRef && it.claimedLetterId != null }) {
+                    "Cette ligne de facture a déjà été réclamée : envoi bloqué pour éviter un doublon."
+                }
+            }
+        }
+    }
+
     /** Génère le PDF complet (lettre + pièces). Le fichier est temporaire : à supprimer après usage. */
     suspend fun buildPdf(context: Context, data: AppData, claim: ClaimDraft): File = withContext(Dispatchers.IO) {
+        ensureNotAlreadyClaimed(claim)
         val docs = buildList {
             claim.invoiceMonths.sorted().forEach { add(data.invoices.getValue(it)) }
             if (RequiredDocument.RIB in claim.rule.requiredDocuments) add(data.rib!!)
@@ -89,6 +114,8 @@ object ClaimSender {
         amountPaidCents: Int? = null,
         sendingId: String? = null,
     ) {
+        // Pour un envoi manuel (impression, site), on refuse de marquer deux fois les mêmes SMS.
+        if (method != SendMethod.MAILEVA) ensureNotAlreadyClaimed(claim)
         val ids = claim.participations.map { it.smsId to it.timestampMillis }.toSet()
         Repository.update { d ->
             val history = (d.claims[claim.key] ?: ClaimState()).copy(

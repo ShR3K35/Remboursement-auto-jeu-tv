@@ -40,10 +40,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: remboursement-jeux-tv-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: app/build/outputs/apk/*/release/*.apk
           if-no-files-found: error
       - name: Renommer l'APK
-        run: cp app/build/outputs/apk/release/*.apk remboursement-jeux-tv.apk
+        run: |
+          cp app/build/outputs/apk/sms/release/*.apk remboursement-jeux-tv.apk
+          cp app/build/outputs/apk/facture/release/*.apk remboursement-jeux-tv-facture.apk
       # Publie l'APK dans une Release : lien direct permanent
       # https://github.com/<owner>/<repo>/releases/latest/download/remboursement-jeux-tv.apk
       - name: Publier l'APK (Release)
@@ -54,5 +56,10 @@ jobs:
           name: Remboursement Jeux TV (build ${{ github.run_number }})
           target_commitish: ${{ github.sha }}
           make_latest: true
-          body: APK Android compilé automatiquement depuis ${{ github.sha }}.
-          files: remboursement-jeux-tv.apk
+          body: |
+            APK Android compilés automatiquement depuis ${{ github.sha }}.
+            - remboursement-jeux-tv.apk : version SMS + facture (installation par ADB, Play Protect bloque les APK lisant les SMS).
+            - remboursement-jeux-tv-facture.apk : version sans permission SMS, détection depuis la facture Prixtel.
+          files: |
+            remboursement-jeux-tv.apk
+            remboursement-jeux-tv-facture.apk

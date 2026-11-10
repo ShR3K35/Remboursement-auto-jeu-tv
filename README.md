@@ -75,8 +75,19 @@ webhook Stripe `https://<votre-serveur>/webhooks/stripe` (événements
 
 ### 2. Application Android
 
-- Téléchargez l'APK : https://github.com/ShR3K35/Remboursement-auto-jeu-tv/releases/latest/download/remboursement-jeux-tv.apk
-  (ou compilez : `./gradlew :app:assembleRelease`).
+Deux versions (installables côte à côte) :
+
+| Version | Détection | Installation | Lien |
+|---|---|---|---|
+| **SMS** | SMS envoyés en temps réel + facture | Par ADB (`adb install remboursement-jeux-tv.apk`) : Play Protect bloque les APK téléchargés qui lisent les SMS | [remboursement-jeux-tv.apk](https://github.com/ShR3K35/Remboursement-auto-jeu-tv/releases/latest/download/remboursement-jeux-tv.apk) |
+| **Facture** | Facture détaillée Prixtel (SMS surtaxés, montants réels) | Directe depuis le téléphone | [remboursement-jeux-tv-facture.apk](https://github.com/ShR3K35/Remboursement-auto-jeu-tv/releases/latest/download/remboursement-jeux-tv-facture.apk) |
+
+Ou compilez : `./gradlew :app:assembleSmsRelease` / `:app:assembleFactureRelease`.
+
+**Anti-doublon** : un même SMS vu dans le téléphone et sur la facture (même numéro court, moins
+de 5 minutes d'écart) ne fait qu'une participation ; réimporter une facture ou rescanner les SMS
+n'ajoute rien ; une participation déjà réclamée ne peut plus entrer dans une demande, et l'app
+revérifie juste avant de générer ou d'envoyer chaque courrier.
 - Installez-le (autorisez l'installation depuis cette source).
 - Android 13+ : si la permission SMS est grisée, ouvrez *Paramètres > Applications >
   Remboursement Jeux TV > ⋮ > Autoriser les paramètres restreints*.

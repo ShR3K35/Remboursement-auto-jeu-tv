@@ -39,7 +39,16 @@ data class Participation(
     val excluded: Boolean = false,
     /** Identifiant de la lettre envoyée qui a réclamé cette participation. */
     val claimedLetterId: String? = null,
-)
+    /**
+     * Référence de la ligne de facture correspondante (« numéro|horodatage »), si la
+     * participation figure sur une facture importée. Le montant est alors le montant facturé.
+     */
+    val invoiceRef: String? = null,
+) {
+    /** Participation lue dans les SMS du téléphone (identifiants SMS Android > 0). */
+    val fromSms: Boolean get() = smsId > 0
+    val fromInvoice: Boolean get() = invoiceRef != null
+}
 
 /** Pièces justificatives exigées par les règlements. */
 enum class RequiredDocument(val label: String) {

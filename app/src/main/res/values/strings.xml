@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Remboursement Jeux TV</string>
+    <!-- app_name est défini par version (build.gradle.kts, productFlavors). -->
 </resources>

@@ -76,7 +76,8 @@ import java.util.Date
 private sealed interface Screen {
     data class Tab(val index: Int) : Screen
     data class ClaimDetail(val key: String) : Screen
-    data class Prixtel(val month: String, val back: String) : Screen
+    /** month = null : import libre depuis l'onglet Participations ; back = null : retour à cet onglet. */
+    data class Prixtel(val month: String?, val back: String?) : Screen
 }
 
 private val dateTime = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
@@ -90,8 +91,9 @@ fun AppRoot() {
 
         when (val s = screen) {
             is Screen.Prixtel -> {
-                BackHandler { screen = Screen.ClaimDetail(s.back) }
-                PrixtelScreen(s.month, data.settings.prixtelUrl) { screen = Screen.ClaimDetail(s.back) }
+                val back: Screen = s.back?.let { Screen.ClaimDetail(it) } ?: Screen.Tab(0)
+                BackHandler { screen = back }
+                PrixtelScreen(s.month, data.settings.prixtelUrl) { screen = back }
             }
             is Screen.ClaimDetail -> {
                 BackHandler { screen = Screen.Tab(1) }
@@ -120,7 +122,7 @@ fun AppRoot() {
             ) { padding ->
                 Column(Modifier.padding(padding)) {
                     when (s.index) {
-                        0 -> ParticipationsScreen(data)
+                        0 -> ParticipationsScreen(data) { screen = Screen.Prixtel(null, null) }
                         1 -> ClaimsScreen(data) { screen = Screen.ClaimDetail(it) }
                         else -> SettingsScreen(data)
                     }
@@ -133,18 +135,32 @@ fun AppRoot() {
 // ---------------------------------------------------------------- Participations
 
 @Composable
-private fun ParticipationsScreen(data: AppData) {
+private fun ParticipationsScreen(data: AppData, onPrixtel: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val requestPermission = LocalRequestSmsPermission.current
     var info by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<Participation?>(null) }
     val list = data.participations.sortedByDescending { it.timestampMillis }
+    val invoicePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            info = try {
+                InvoiceImporter.importUri(context, uri, null).message()
+            } catch (e: Exception) {
+                e.message
+            }
+        }
+    }
 
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
             Spacer(Modifier.height(8.dp))
-            if (!SmsScanner.hasPermission(context)) {
+            if (!SmsScanner.enabled) {
+                InfoCard(
+                    "Version « facture » : les participations sont repérées dans votre facture détaillée Prixtel " +
+                        "(SMS surtaxés avec date, heure, numéro et montant facturé). Importez chaque mois la facture.",
+                )
+            } else if (!SmsScanner.hasPermission(context)) {
                 InfoCard(
                     "L'app a besoin de lire vos SMS envoyés pour repérer les SMS surtaxés envoyés aux jeux TF1/M6. " +
                         "Seuls ces SMS sont conservés, chiffrés sur le téléphone.",
@@ -158,9 +174,14 @@ private fun ParticipationsScreen(data: AppData) {
                             info = if (added.isEmpty()) "Aucune nouvelle participation." else "${added.size} nouvelle(s) participation(s)."
                         }
                     }) { Text("Analyser mes SMS") }
-                    info?.let { Text(it, Modifier.padding(start = 12.dp)) }
                 }
             }
+            Text("Facture détaillée (montants réels, sans doublon avec les SMS) :", style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onPrixtel) { Text("Depuis Prixtel") }
+                OutlinedButton(onClick = { invoicePicker.launch(arrayOf("application/pdf")) }) { Text("Importer un PDF") }
+            }
+            info?.let { Text(it) }
             if (list.isEmpty()) Text("Aucune participation détectée pour l'instant.", Modifier.padding(top = 16.dp))
         }
         items(list, key = { "${it.smsId}-${it.timestampMillis}" }) { p ->
@@ -192,6 +213,14 @@ private fun ParticipationCard(p: Participation, onEdit: () -> Unit) {
             }
             Text("${p.channel.label} – ${p.gameName}", style = MaterialTheme.typography.bodyLarge)
             Text("« ${p.body.take(80)} »", style = MaterialTheme.typography.bodySmall)
+            Text(
+                when {
+                    p.fromSms && p.fromInvoice -> "Source : SMS + facture ✔ (montant facturé)"
+                    p.fromInvoice -> "Source : facture"
+                    else -> "Source : SMS (montant estimé)"
+                },
+                style = MaterialTheme.typography.labelSmall,
+            )
             when {
                 p.claimedLetterId != null -> Text("✔ Remboursement demandé", color = Color(0xFF2E7D32))
                 p.confidence == Confidence.LOW && !p.userValidated -> Text("À classer : de quelle chaîne s'agit-il ?", color = Color(0xFFB26A00))
@@ -333,11 +362,10 @@ private fun ClaimDetailScreen(data: AppData, key: String, onBack: () -> Unit, on
         val month = pickMonth ?: return@rememberLauncherForActivityResult
         if (uri != null) scope.launch {
             try {
-                val doc = Documents.importUri(context, uri)
-                Repository.update { d ->
-                    Documents.delete(d.invoices[month])
-                    d.copy(invoices = d.invoices + (month to doc))
-                }
+                // PDF : enregistré pour le mois et analysé (fusion sans doublon) ; image : pièce jointe seule.
+                val report = InvoiceImporter.importUri(context, uri, month)
+                busy = null
+                error = report.message()
             } catch (e: Exception) {
                 error = e.message
             }

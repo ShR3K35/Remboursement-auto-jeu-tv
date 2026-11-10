@@ -38,7 +38,7 @@ class ClaimBuilder(
 
     /** Regroupe les participations par chaîne + jeu (une lettre par jeu). */
     fun build(participations: List<Participation>, nowMillis: Long): List<ClaimDraft> =
-        participations
+        Dedup.distinct(participations)
             .filter { !it.excluded && it.claimedLetterId == null && it.channel != Channel.UNKNOWN }
             .groupBy { it.channel to it.gameName }
             .mapNotNull { (k, list) -> buildOne(k.first, k.second, list, nowMillis) }

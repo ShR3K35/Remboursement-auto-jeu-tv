@@ -59,10 +59,10 @@ class MainActivity : ComponentActivity() {
 
         val requestPermissions = {
             val perms = buildList {
-                add(Manifest.permission.READ_SMS)
+                if (SmsScanner.enabled) add(Manifest.permission.READ_SMS)
                 if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
             }
-            permissionLauncher.launch(perms.toTypedArray())
+            if (perms.isNotEmpty()) permissionLauncher.launch(perms.toTypedArray())
         }
 
         setContent {
@@ -74,7 +74,8 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        if (!SmsScanner.hasPermission(this)) requestPermissions()
+        if (SmsScanner.enabled && !SmsScanner.hasPermission(this)) requestPermissions()
+        else if (!SmsScanner.enabled && Build.VERSION.SDK_INT >= 33) requestPermissions()
     }
 
     override fun onResume() {

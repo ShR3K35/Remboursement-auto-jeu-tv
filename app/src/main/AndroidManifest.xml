@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Lecture des SMS envoyés pour détecter les participations aux jeux (SMS+). -->
-    <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- READ_SMS est déclarée uniquement dans la version « sms » (src/sms/AndroidManifest.xml). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

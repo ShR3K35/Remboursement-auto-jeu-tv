@@ -90,6 +90,17 @@ object Repository {
         next
     }
 
+    /**
+     * Associe un document de facture à un mois. L'ancien fichier n'est supprimé que
+     * s'il n'est plus utilisé ailleurs (une même facture peut couvrir plusieurs mois).
+     */
+    fun withInvoice(d: AppData, month: String, doc: StoredDocument): AppData {
+        val old = d.invoices[month]
+        val next = d.copy(invoices = d.invoices + (month to doc))
+        if (old != null && old.path != doc.path && next.invoices.values.none { it.path == old.path }) Documents.delete(old)
+        return next
+    }
+
     // ---- Règles et demandes effectives ----
 
     fun effectiveRule(data: AppData, channel: Channel): RefundRule? {
@@ -125,6 +136,7 @@ object Repository {
                 put("cost", p.costCents); put("confidence", p.confidence.name)
                 put("validated", p.userValidated); put("excluded", p.excluded)
                 put("claimedLetterId", p.claimedLetterId ?: JSONObject.NULL)
+                put("invoiceRef", p.invoiceRef ?: JSONObject.NULL)
             }
         }))
         d.profile?.let { p ->
@@ -195,6 +207,7 @@ object Repository {
                 confidence = Confidence.valueOf(p.getString("confidence")),
                 userValidated = p.optBoolean("validated"), excluded = p.optBoolean("excluded"),
                 claimedLetterId = p.optStringOrNull("claimedLetterId"),
+                invoiceRef = p.optStringOrNull("invoiceRef"),
             )
         }
         val profile = o.optJSONObject("profile")?.let { p ->

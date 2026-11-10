@@ -40,10 +40,11 @@ import okhttp3.Request
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun PrixtelScreen(month: String, startUrl: String, onDone: () -> Unit) {
+fun PrixtelScreen(month: String?, startUrl: String, onDone: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var message by remember { mutableStateOf("Connectez-vous, ouvrez « Mes factures » puis téléchargez la facture détaillée de $month.") }
+    val which = month?.let { "de $it" } ?: "du mois voulu"
+    var message by remember { mutableStateOf("Connectez-vous, ouvrez « Mes factures » puis téléchargez la facture détaillée $which.") }
 
     Column(Modifier.fillMaxSize()) {
         Text(message, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
@@ -77,12 +78,9 @@ fun PrixtelScreen(month: String, startUrl: String, onDone: () -> Unit) {
                             message = "Téléchargement de la facture…"
                             message = try {
                                 val bytes = download(url, userAgent)
-                                val doc = Documents.importBytes(context, bytes, "application/pdf", "Facture Prixtel $month.pdf")
-                                Repository.update { d ->
-                                    Documents.delete(d.invoices[month])
-                                    d.copy(invoices = d.invoices + (month to doc))
-                                }
-                                "Facture de $month enregistrée ✔ (${bytes.size / 1024} Ko). Vous pouvez terminer."
+                                // Enregistre la facture et en extrait les SMS surtaxés (sans doublon).
+                                InvoiceImporter.importPdf(context, bytes, "Facture Prixtel.pdf", month).message() +
+                                    " Vous pouvez terminer ou télécharger une autre facture."
                             } catch (e: Exception) {
                                 "Échec : ${e.message ?: mimeType}"
                             }

@@ -31,7 +31,30 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    // Deux versions installables côte à côte :
+    //  - sms     : lit les SMS envoyés (READ_SMS) + factures. À installer par ADB
+    //              (Play Protect bloque les APK téléchargés qui lisent les SMS).
+    //  - facture : sans permission SMS, détection depuis la facture détaillée Prixtel.
+    flavorDimensions += "detection"
+    productFlavors {
+        create("sms") {
+            dimension = "detection"
+            buildConfigField("boolean", "SMS_DETECTION", "true")
+            resValue("string", "app_name", "Remboursement Jeux TV")
+        }
+        create("facture") {
+            dimension = "detection"
+            applicationIdSuffix = ".facture"
+            versionNameSuffix = "-facture"
+            buildConfigField("boolean", "SMS_DETECTION", "false")
+            resValue("string", "app_name", "Remboursement Jeux TV (facture)")
+        }
+    }
 
     packaging {
         resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
@@ -52,6 +75,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // Extraction du texte des factures PDF (détection des SMS surtaxés facturés).
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     // PaymentSheet Stripe : saisie de carte conforme PCI-DSS + 3-D Secure.
     implementation("com.stripe:stripe-android:21.3.0")
 }
