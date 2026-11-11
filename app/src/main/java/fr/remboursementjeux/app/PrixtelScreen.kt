@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Column
@@ -45,15 +46,17 @@ fun PrixtelScreen(month: String?, startUrl: String, onDone: () -> Unit) {
     val scope = rememberCoroutineScope()
     val which = month?.let { "de $it" } ?: "du mois voulu"
     var message by remember { mutableStateOf("Connectez-vous, ouvrez « Mes factures » puis téléchargez la facture détaillée $which.") }
+    var webView by remember { mutableStateOf<WebView?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         Text(message, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+            OutlinedButton(onClick = { webView?.loadUrl(PRIXTEL_HOME_URL) }) { Text("Accueil") }
             OutlinedButton(onClick = {
                 CookieManager.getInstance().removeAllCookies(null)
                 message = "Session Prixtel effacée."
-            }) { Text("Se déconnecter") }
-            Button(onClick = onDone, modifier = Modifier.padding(start = 8.dp)) { Text("Terminer") }
+            }, modifier = Modifier.padding(start = 6.dp)) { Text("Déconnexion") }
+            Button(onClick = onDone, modifier = Modifier.padding(start = 6.dp)) { Text("Terminer") }
         }
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -63,7 +66,16 @@ fun PrixtelScreen(month: String?, startUrl: String, onDone: () -> Unit) {
                     settings.domStorageEnabled = true
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
+                    webView = this
                     webViewClient = object : WebViewClient() {
+                        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+                            if (request.isForMainFrame && errorResponse.statusCode >= 400) {
+                                message = "Page introuvable (erreur ${errorResponse.statusCode}). Touchez « Accueil » puis " +
+                                    "l'icône de compte en haut à droite du site. Si besoin, corrigez l'adresse dans Réglages, " +
+                                    "ou téléchargez la facture ailleurs et utilisez « Importer un PDF »."
+                            }
+                        }
+
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val host = request.url.host ?: return true
                             if (request.url.scheme != "https") return true

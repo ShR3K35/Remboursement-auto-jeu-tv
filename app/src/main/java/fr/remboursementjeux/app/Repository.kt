@@ -21,11 +21,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
+/** Page de connexion de l'espace client Prixtel. */
+const val PRIXTEL_LOGIN_URL = "https://espaceclient.prixtel.com/connexion"
+const val PRIXTEL_HOME_URL = "https://www.prixtel.com/"
+private const val OLD_PRIXTEL_URL = "https://www.prixtel.com/espace-client/"
+
 /** Réglages de l'app. */
 data class Settings(
     val serverUrl: String = "",
     val apiToken: String = "",
-    val prixtelUrl: String = "https://www.prixtel.com/espace-client/",
+    val prixtelUrl: String = PRIXTEL_LOGIN_URL,
     val stampCents: Int = DefaultRules.DEFAULT_STAMP_CENTS,
     val notificationEmail: String = "",
     /** Numéros courts relevés dans les règlements, par chaîne. */
@@ -222,7 +227,9 @@ object Repository {
         val extra = s.optJSONObject("extraShortCodes") ?: JSONObject()
         val settings = Settings(
             serverUrl = s.optString("serverUrl"), apiToken = s.optString("apiToken"),
-            prixtelUrl = s.optString("prixtelUrl", Settings().prixtelUrl),
+            // Migration : l'ancienne adresse par défaut renvoyait une erreur 404.
+            prixtelUrl = s.optString("prixtelUrl", PRIXTEL_LOGIN_URL)
+                .takeUnless { it.isBlank() || it == OLD_PRIXTEL_URL } ?: PRIXTEL_LOGIN_URL,
             stampCents = s.optInt("stampCents", DefaultRules.DEFAULT_STAMP_CENTS),
             notificationEmail = s.optString("notificationEmail"),
             extraShortCodes = extra.mapEntries { _, v ->
