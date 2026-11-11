@@ -42,6 +42,20 @@ calcule le prix, crée le paiement, vérifie qu'il a abouti puis transmet le cou
    l'app prépare tout et vous terminez sur leur site (paiement sécurisé chez eux).
    Seul le mode Maileva nécessite le serveur décrit ci-dessous.
 
+## Récupération des factures Prixtel
+
+Prixtel ne propose pas d'API publique de facturation. L'app offre plusieurs chemins, tous
+sans doublon (un fichier déjà importé ou un SMS déjà connu n'est jamais ajouté deux fois) :
+
+- **Espace client dans l'app** (bouton « Depuis Prixtel ») : vous vous connectez, la facture
+  téléchargée est importée.
+- **Partager vers l'app** : depuis l'appli Prixtel, Gmail ou Fichiers, « Partager » ou « Ouvrir
+  avec » *Remboursement Jeux TV* sur le PDF.
+- **Dossier Google Drive + Gmail** : un script Google ([google-script/](google-script/README.md))
+  relève chaque jour les mails Prixtel « votre facture est disponible ». L'app se synchronise une
+  fois par jour : elle importe les PDF déposés dans le dossier et affiche « en attente de dépôt »
+  (avec notification) chaque facture annoncée et pas encore reçue.
+
 ## Sécurité
 
 - **Paiement** : saisie de la carte uniquement dans le formulaire Stripe (PCI-DSS), jamais

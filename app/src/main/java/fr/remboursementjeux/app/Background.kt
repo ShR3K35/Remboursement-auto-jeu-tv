@@ -16,7 +16,9 @@ import android.provider.Telephony
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.NetworkType
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -49,6 +51,14 @@ class App : Application() {
             "scan-sms",
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<ScanWorker>(15, TimeUnit.MINUTES).build(),
+        )
+        // Une fois par jour : mails Prixtel (via le script Google) et factures déposées dans Drive.
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+            "drive-sync",
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<DriveWorker>(1, TimeUnit.DAYS)
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build(),
         )
     }
 
@@ -113,6 +123,24 @@ object Notifier {
         try {
             NotificationManagerCompat.from(context).notify(id, n)
         } catch (_: SecurityException) {
+        }
+    }
+
+    suspend fun notifyInvoices(context: Context, r: DriveSync.Result) {
+        if (r.imported.isNotEmpty()) {
+            post(context, 3, "${r.imported.size} facture(s) importée(s) depuis Google Drive", r.messages.joinToString("\n"))
+        }
+        val notified = Repository.data.value.inbox.notifiedEmailIds
+        val fresh = r.pending.filter { it.id !in notified }
+        if (fresh.isNotEmpty()) {
+            val fmt = DateFormat.getDateInstance(DateFormat.LONG)
+            post(
+                context, 4, "Facture Prixtel à déposer dans Google Drive",
+                fresh.joinToString("\n") { "Reçue le ${fmt.format(Date(it.receivedMillis))} : ${it.subject}" } +
+                    "\nElle n'est pas jointe au mail : récupérez-la dans l'espace client Prixtel (bouton dans l'app, " +
+                    "onglet Participations) puis déposez-la dans votre dossier Drive, ou importez-la directement.",
+            )
+            Repository.update { d -> d.copy(inbox = d.inbox.copy(notifiedEmailIds = d.inbox.notifiedEmailIds + fresh.map { it.id })) }
         }
     }
 

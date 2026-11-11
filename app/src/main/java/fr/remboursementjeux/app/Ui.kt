@@ -181,6 +181,7 @@ private fun ParticipationsScreen(data: AppData, onPrixtel: () -> Unit) {
                 OutlinedButton(onClick = onPrixtel) { Text("Depuis Prixtel") }
                 OutlinedButton(onClick = { invoicePicker.launch(arrayOf("application/pdf")) }) { Text("Importer un PDF") }
             }
+            InvoiceInboxCard(data, onPrixtel) { info = it }
             info?.let { Text(it) }
             if (list.isEmpty()) Text("Aucune participation détectée pour l'instant.", Modifier.padding(top = 16.dp))
         }
@@ -191,6 +192,59 @@ private fun ParticipationsScreen(data: AppData, onPrixtel: () -> Unit) {
     }
 
     editing?.let { p -> EditParticipationDialog(p, onDismiss = { editing = null }) }
+}
+
+/** Factures annoncées par mail (script Google) et synchronisation du dossier Drive. */
+@Composable
+private fun InvoiceInboxCard(data: AppData, onPrixtel: () -> Unit, onInfo: (String) -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var syncing by remember { mutableStateOf(false) }
+    if (!DriveSync.isConfigured(data)) {
+        Text(
+            "Astuce : partagez une facture PDF vers l'app depuis l'appli Prixtel ou Gmail. Pour la vérification " +
+                "quotidienne des mails Prixtel et l'import depuis Google Drive, configurez le script Google (Réglages).",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        return
+    }
+    val pending = DriveSync.pending(data)
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (pending.isEmpty()) Color(0xFFE8F5E9) else Color(0xFFFFF3E0))) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Factures Prixtel (Gmail + Google Drive)", fontWeight = FontWeight.Bold)
+            if (pending.isEmpty()) {
+                Text("Aucune facture en attente.")
+            } else {
+                pending.forEach { Text("⏳ Facture annoncée le ${dateLong.format(Date(it.receivedMillis))} — en attente de dépôt dans Google Drive") }
+                Text(
+                    "Le mail ne contient pas la facture : téléchargez-la dans l'espace client Prixtel puis déposez-la " +
+                        "dans votre dossier Drive (ou importez-la directement ici).",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            val inbox = data.inbox
+            if (inbox.lastSyncMillis > 0) Text("Dernière synchronisation : ${dateTime.format(Date(inbox.lastSyncMillis))}", style = MaterialTheme.typography.labelSmall)
+            inbox.lastError?.let { Text("Erreur : $it", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (pending.isNotEmpty()) OutlinedButton(onClick = onPrixtel) { Text("Espace client Prixtel") }
+                Button(enabled = !syncing, onClick = {
+                    syncing = true
+                    scope.launch {
+                        try {
+                            val r = DriveSync.sync(context)
+                            onInfo(
+                                if (r.messages.isEmpty()) "Synchronisé : aucune nouvelle facture dans Drive."
+                                else r.messages.joinToString("\n"),
+                            )
+                        } catch (e: Exception) {
+                            onInfo(e.message ?: "Synchronisation impossible")
+                        }
+                        syncing = false
+                    }
+                }) { Text(if (syncing) "Synchronisation…" else "Synchroniser Drive") }
+            }
+        }
+    }
 }
 
 @Composable
@@ -614,6 +668,8 @@ private fun SettingsScreen(data: AppData) {
     var server by remember { mutableStateOf(data.settings.serverUrl) }
     var token by remember { mutableStateOf(data.settings.apiToken) }
     var prixtel by remember { mutableStateOf(data.settings.prixtelUrl) }
+    var driveUrl by remember { mutableStateOf(data.settings.driveUrl) }
+    var driveToken by remember { mutableStateOf(data.settings.driveToken) }
     var stamp by remember { mutableStateOf(String.format(java.util.Locale.FRANCE, "%.2f", data.settings.stampCents / 100.0)) }
     var tf1Codes by remember { mutableStateOf(data.settings.extraShortCodes[Channel.TF1].orEmpty().joinToString(", ")) }
     var m6Codes by remember { mutableStateOf(data.settings.extraShortCodes[Channel.M6].orEmpty().joinToString(", ")) }
@@ -684,12 +740,24 @@ private fun SettingsScreen(data: AppData) {
             visualTransformation = PasswordVisualTransformation())
         OutlinedTextField(prixtel, { prixtel = it }, Modifier.fillMaxWidth(), label = { Text("Page de l'espace client Prixtel") })
 
+        Text("Google Drive et Gmail (script Google)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Vérification quotidienne des mails Prixtel et import des factures déposées dans un dossier Drive. " +
+                "Installation : dossier google-script du projet (README).",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(driveUrl, { driveUrl = it }, Modifier.fillMaxWidth(), label = { Text("URL de l'application Web (https://script.google.com/…)") })
+        OutlinedTextField(driveToken, { driveToken = it }, Modifier.fillMaxWidth(), label = { Text("Jeton du script") },
+            visualTransformation = PasswordVisualTransformation())
+
         message?.let { Text(it) }
         Button(onClick = {
             val stampCents = stamp.replace(',', '.').toDoubleOrNull()?.let { Math.round(it * 100).toInt() }
             when {
                 server.isNotBlank() && !server.trim().startsWith("https://") -> message = "Le serveur doit être en https://"
                 !prixtel.trim().startsWith("https://") -> message = "L'adresse Prixtel doit être en https://"
+                driveUrl.isNotBlank() && !driveUrl.trim().startsWith("https://script.google.com/") ->
+                    message = "L'URL du script doit commencer par https://script.google.com/"
                 iban.isNotBlank() && !Iban.isValid(iban) -> message = "IBAN invalide"
                 else -> scope.launch {
                     Repository.update { d ->
@@ -698,6 +766,7 @@ private fun SettingsScreen(data: AppData) {
                                 postal.trim(), city.trim(), phone.trim(), email.trim(), Iban.normalize(iban)),
                             settings = d.settings.copy(
                                 serverUrl = server.trim(), apiToken = token.trim(), prixtelUrl = prixtel.trim(),
+                                driveUrl = driveUrl.trim(), driveToken = driveToken.trim(),
                                 stampCents = stampCents ?: d.settings.stampCents,
                                 notificationEmail = email.trim(),
                                 extraShortCodes = mapOf(Channel.TF1 to parseCodes(tf1Codes), Channel.M6 to parseCodes(m6Codes)),

@@ -9,6 +9,8 @@ import fr.remboursementjeux.core.ClaimStatus
 import fr.remboursementjeux.core.Confidence
 import fr.remboursementjeux.core.DefaultProfiles
 import fr.remboursementjeux.core.DefaultRules
+import fr.remboursementjeux.core.DriveFile
+import fr.remboursementjeux.core.InvoiceEmail
 import fr.remboursementjeux.core.Participation
 import fr.remboursementjeux.core.RefundRule
 import fr.remboursementjeux.core.RequiredDocument
@@ -35,6 +37,23 @@ data class Settings(
     val notificationEmail: String = "",
     /** Numéros courts relevés dans les règlements, par chaîne. */
     val extraShortCodes: Map<Channel, Set<String>> = emptyMap(),
+    /** URL de l'application Web du script Google (Gmail + Drive) et son jeton. */
+    val driveUrl: String = "",
+    val driveToken: String = "",
+)
+
+/** Suivi des factures Prixtel via le script Google (mails reçus, PDF du dossier Drive). */
+data class InvoiceInboxState(
+    val emails: List<InvoiceEmail> = emptyList(),
+    val files: List<DriveFile> = emptyList(),
+    /** Factures importées directement dans l'app (espace client, partage, fichier) : soldent aussi l'attente. */
+    val localImports: List<DriveFile> = emptyList(),
+    /** Fichiers Drive déjà importés (jamais réimportés). */
+    val importedFileIds: Set<String> = emptySet(),
+    /** Mails déjà signalés par notification. */
+    val notifiedEmailIds: Set<String> = emptySet(),
+    val lastSyncMillis: Long = 0,
+    val lastError: String? = null,
 )
 
 /** Adaptations des règles par l'utilisateur (adresse vérifiée dans le règlement, délai…). */
@@ -72,6 +91,7 @@ data class AppData(
     /** Factures détaillées par mois (AAAA-MM), partagées entre les demandes. */
     val invoices: Map<String, StoredDocument> = emptyMap(),
     val lastScanMillis: Long = 0,
+    val inbox: InvoiceInboxState = InvoiceInboxState(),
 )
 
 /** Dépôt unique de l'app : état en mémoire + persistance chiffrée. */
@@ -156,6 +176,7 @@ object Repository {
             val s = d.settings
             put("serverUrl", s.serverUrl); put("apiToken", s.apiToken); put("prixtelUrl", s.prixtelUrl)
             put("stampCents", s.stampCents); put("notificationEmail", s.notificationEmail)
+            put("driveUrl", s.driveUrl); put("driveToken", s.driveToken)
             put("extraShortCodes", JSONObject().apply {
                 s.extraShortCodes.forEach { (c, codes) -> put(c.name, JSONArray(codes.toList())) }
             })
@@ -186,7 +207,34 @@ object Repository {
         d.idCard?.let { put("idCard", docJson(it)) }
         put("invoices", JSONObject().apply { d.invoices.forEach { (k, v) -> put(k, docJson(v)) } })
         put("lastScan", d.lastScanMillis)
+        put("inbox", JSONObject().apply {
+            val i = d.inbox
+            put("emails", JSONArray(i.emails.map {
+                JSONObject().put("id", it.id).put("received", it.receivedMillis).put("subject", it.subject).put("hasPdf", it.hasPdf)
+            }))
+            put("files", JSONArray(i.files.map { JSONObject().put("id", it.id).put("name", it.name).put("created", it.createdMillis) }))
+            put("imported", JSONArray(i.importedFileIds.toList()))
+            put("local", JSONArray(i.localImports.map { JSONObject().put("id", it.id).put("name", it.name).put("created", it.createdMillis) }))
+            put("notified", JSONArray(i.notifiedEmailIds.toList()))
+            put("lastSync", i.lastSyncMillis)
+            put("lastError", i.lastError ?: JSONObject.NULL)
+        })
     }
+
+    private fun JSONArray?.objects(): List<JSONObject> = if (this == null) emptyList() else (0 until length()).map { getJSONObject(it) }
+    private fun JSONArray?.strings(): Set<String> = if (this == null) emptySet() else (0 until length()).map { getString(it) }.toSet()
+
+    private fun parseInbox(i: JSONObject) = InvoiceInboxState(
+        emails = i.optJSONArray("emails").objects().map {
+            InvoiceEmail(it.getString("id"), it.getLong("received"), it.optString("subject"), it.optBoolean("hasPdf"))
+        },
+        files = i.optJSONArray("files").objects().map { DriveFile(it.getString("id"), it.optString("name"), it.getLong("created")) },
+        importedFileIds = i.optJSONArray("imported").strings(),
+        localImports = i.optJSONArray("local").objects().map { DriveFile(it.getString("id"), it.optString("name"), it.getLong("created")) },
+        notifiedEmailIds = i.optJSONArray("notified").strings(),
+        lastSyncMillis = i.optLong("lastSync"),
+        lastError = i.optStringOrNull("lastError"),
+    )
 
     private fun docJson(doc: StoredDocument) = JSONObject().apply {
         put("path", doc.path); put("mime", doc.mimeType); put("name", doc.displayName)
@@ -232,6 +280,8 @@ object Repository {
                 .takeUnless { it.isBlank() || it == OLD_PRIXTEL_URL } ?: PRIXTEL_LOGIN_URL,
             stampCents = s.optInt("stampCents", DefaultRules.DEFAULT_STAMP_CENTS),
             notificationEmail = s.optString("notificationEmail"),
+            driveUrl = s.optString("driveUrl"),
+            driveToken = s.optString("driveToken"),
             extraShortCodes = extra.mapEntries { _, v ->
                 val arr = v as JSONArray
                 (0 until arr.length()).map { arr.getString(it) }.toSet()
@@ -269,6 +319,7 @@ object Repository {
             idCard = parseDoc(o.optJSONObject("idCard")),
             invoices = (o.optJSONObject("invoices") ?: JSONObject()).mapEntries { _, v -> parseDoc(v as JSONObject)!! },
             lastScanMillis = o.optLong("lastScan"),
+            inbox = o.optJSONObject("inbox")?.let { parseInbox(it) } ?: InvoiceInboxState(),
         )
     }
 }

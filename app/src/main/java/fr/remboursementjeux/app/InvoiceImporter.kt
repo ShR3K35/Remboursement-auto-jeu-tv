@@ -50,7 +50,14 @@ object InvoiceImporter {
         }
     }
 
-    suspend fun importPdf(context: Context, bytes: ByteArray, name: String, forcedMonth: String?): Report = withContext(Dispatchers.IO) {
+    /** @param driveFileId identifiant du fichier Drive d'origine, null pour un import direct dans l'app. */
+    suspend fun importPdf(
+        context: Context,
+        bytes: ByteArray,
+        name: String,
+        forcedMonth: String?,
+        driveFileId: String? = null,
+    ): Report = withContext(Dispatchers.IO) {
         val text = extractText(context, bytes)
         val lines = InvoiceParser.parse(text)
         val data = Repository.data.value
@@ -64,6 +71,11 @@ object InvoiceImporter {
         Repository.update { d ->
             var next = d
             months.forEach { m -> next = Repository.withInvoice(next, m, doc) }
+            if (driveFileId == null) {
+                // Facture récupérée hors Drive : elle solde aussi une facture « en attente ».
+                val local = DriveFile("local-" + java.util.UUID.randomUUID(), name, System.currentTimeMillis())
+                next = next.copy(inbox = next.inbox.copy(localImports = (next.inbox.localImports + local).takeLast(60)))
+            }
             val merged = Dedup.merge(next.participations, incoming)
             report = report.copy(added = merged.added.size, duplicates = merged.duplicates, paired = merged.pairedWithInvoice)
             next.copy(participations = merged.participations)

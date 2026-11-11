@@ -2,7 +2,11 @@ package fr.remboursementjeux.app
 
 import android.Manifest
 import android.os.Build
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
+import androidx.core.content.IntentCompat
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -74,8 +78,34 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        handleSharedPdf(intent)
+
         if (SmsScanner.enabled && !SmsScanner.hasPermission(this)) requestPermissions()
         else if (!SmsScanner.enabled && Build.VERSION.SDK_INT >= 33) requestPermissions()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleSharedPdf(intent)
+    }
+
+    /** Facture PDF partagée vers l'app : import immédiat (sans doublon). */
+    private fun handleSharedPdf(intent: Intent?) {
+        if (intent == null) return
+        val uri: Uri = when (intent.action) {
+            Intent.ACTION_SEND -> IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
+            Intent.ACTION_VIEW -> intent.data
+            else -> null
+        } ?: return
+        setIntent(Intent(this, MainActivity::class.java)) // évite un réimport à la rotation
+        lifecycleScope.launch {
+            val msg = try {
+                InvoiceImporter.importUri(this@MainActivity, uri, null).message()
+            } catch (e: Exception) {
+                "Import impossible : ${e.message}"
+            }
+            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+        }
     }
 
     override fun onResume() {
